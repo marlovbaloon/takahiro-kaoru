@@ -1,7 +1,7 @@
 // main.c
 #include <stdio.h>
 #include <unistd.h> // For usleep on Linux/Termux
-#include "include/connectome.h"
+#include "../include/connectome.h"
 
 int main() {
     FruitFlyConnectome kaoru_brain;
