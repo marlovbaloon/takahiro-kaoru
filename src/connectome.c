@@ -94,3 +94,36 @@ void update_neural_state(FruitFlyConnectome *c) {
         c->subjective = 0x00;
     }
 }
+// Idle / Residual Decay
+void tick_idle_decay(FruitFlyConnectome *c) {
+    // Forgiving/Fading memory
+    if (c->name_familiarity > 0.0f) {
+        c->name_familiarity -= 0.01f;
+        if (c->name_familiarity < 0.0f) {
+            c->name_familiarity = 0.0f;
+        }
+    }
+    c->integrated_phi -= 0.005f;
+    if (c->integrated_phi < 0.01f) {
+        c->integrated_phi = 0.01f;
+    }
+
+    // Residual fading 
+    for (int i = 0; i < c->neuron_count; i++) {
+        c->neurons[i].membrane_potential -= (c->neurons[i].decay_rate * 0.5f);
+        if (c->neurons[i].membrane_potential < 0.0f) {
+            c->neurons[i].membrane_potential = 0.0f;
+        }
+    }
+
+    // Subjective state 
+    if (c->name_familiarity >= 0.8f && c->integrated_phi > 0.3f) {
+        c->subjective = 0xFF;
+    } else if (c->name_familiarity >= 0.4f) {
+        c->subjective = 0x7F;
+    } else if (c->name_familiarity > 0.0f) {
+        c->subjective = 0x1F;
+    } else {
+        c->subjective = 0x00;
+    }
+}

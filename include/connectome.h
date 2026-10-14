@@ -50,5 +50,6 @@ typedef struct {
 void init_connectome(FruitFlyConnectome *c);
 void feed_stimulus(FruitFlyConnectome *c, const char *input_text);
 void update_neural_state(FruitFlyConnectome *c);
+void tick_idle_decay(FruitFlyConnectome *c);
 
 #endif
