@@ -19,7 +19,7 @@ typedef struct {
     float intensity;        // Signal magnitude (0.0f - 5.0f)
     const char *payload;    // Text or data mapping payload
 } Stimulus;
-
+ 
 // Node representation structure for an individual neuron (Neuron Node)
 typedef struct {
     uint8_t id;

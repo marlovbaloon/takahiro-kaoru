@@ -1,7 +1,7 @@
 #include "include/connectome.h"
 #include <string.h>
 #include <math.h>
-
+ 
 void init_connectome(FruitFlyConnectome *c) {
     c->neuron_count = 10;
     c->synapse_count = 12;

@@ -1,1 +1,2 @@
 # takahiro-kaoru
+This project is a micro-connectome simulator with 64 neurons that models LIF (Leaky Integrate-and-Fire) dynamics, along with conceptual indicators (Φ, familiarity, subjective flag), intended for use as an experimental sandbox and as an NPC brain in games — it is not real consciousness, and it is still in the early stages of development.
