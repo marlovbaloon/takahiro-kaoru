@@ -78,20 +78,18 @@ void update_neural_state(FruitFlyConnectome *c) {
         }
     }
 
-    // Fixed: Use neuron[0].decay_rate instead of non-existent c->decay_rate
     c->integrated_phi += (active_firing_count * 0.02f) - (c->neurons[0].decay_rate * 0.05f);
     if (c->integrated_phi < 0.01f) {
         c->integrated_phi = 0.01f;
     }
-
-    if (c->name_familiarity >= 0.8f && c->integrated_phi > 0.3f) {
+    float raw_subjective_score = (c->name_familiarity * 150.0f) + (c->integrated_phi * 100.0f);
+    
+    if (raw_subjective_score > 255.0f) {
         c->subjective = 0xFF;
-    } else if (c->name_familiarity >= 0.4f) {
-        c->subjective = 0x7F;
-    } else if (c->name_familiarity > 0.0f) {
-        c->subjective = 0x1F;
-    } else {
+    } else if (raw_subjective_score < 0.0f) {
         c->subjective = 0x00;
+    } else {
+        c->subjective = (uint8_t)raw_subjective_score;
     }
 }
 // Idle / Residual Decay
