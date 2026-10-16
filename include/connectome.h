@@ -120,10 +120,13 @@ typedef struct {
     CetasikaMatrix cetasika;    // Abhidhamma mental factors core
 } NeuralConnectome;
 
-// Core circuit update functions
+
+// Core circuit and recursive update functions
 void init_connectome(NeuralConnectome *c);
 void feed_stimulus(NeuralConnectome *c, const char *input_text);
 void update_neural_state(NeuralConnectome *c);
+void update_cetasika_matrix(NeuralConnectome *c);           // Recursive Cetasika processor
+void update_samsara_loop(NeuralConnectome *c);              // Prabhasara Samsara loop tracker
 void update_kaoru_mental_state(NeuralConnectome *c, KaoruMentalState *state);
 void tick_idle_decay(NeuralConnectome *c);
 
