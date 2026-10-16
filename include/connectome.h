@@ -1,4 +1,3 @@
-// include/connectome.h
 #ifndef CONNECTOME_H
 #define CONNECTOME_H
 
@@ -7,12 +6,22 @@
 #define MAX_NEURONS 64      // Micro-unit simulation scale for mobile/MCU deployment
 #define MAX_SYNAPSES 256
 
+typedef struct {
+    float agency_drive;
+    float relational_distance;
+    float logic_focus;
+}KaoruMetalState
+
+typedef struct {
+
+}emotional 
+
 typedef enum {
     STIM_AUDITORY_NAME = 0, // Active identity / familiarity recognition
     STIM_AUDITORY_GENERAL,  // General environmental or speech sound
     STIM_TACTILE_TOUCH,     // Collision / physical touch in VR
     STIM_ENVIRONMENTAL      // Background ambient stimulus
-} StimulusType;             // Fixed missing semicolon here!
+} StimulusType;
 
 typedef struct {
     StimulusType type;
@@ -20,7 +29,7 @@ typedef struct {
     const char *payload;    // Text or data mapping payload
 } Stimulus;
  
-// Node representation structure for an individual neuron (Neuron Node)
+// Node representation structure for an individual neuron
 typedef struct {
     uint8_t id;
     float membrane_potential;   // Membrane potential value (Signal Accumulation)
@@ -35,7 +44,7 @@ typedef struct {
     float weight;               // Synaptic transmission strength (Synaptic Weight)
 } Synapse;
 
-// Aggregate fruit fly brain connectome structure (Connectome Sub-graph Core)
+// Aggregate neural network connectome structure
 typedef struct {
     Neuron neurons[MAX_NEURONS];
     Synapse synapses[MAX_SYNAPSES];
@@ -44,12 +53,13 @@ typedef struct {
     float integrated_phi;       // Integrated Information Index (Phi)
     float name_familiarity;     // Self-name recognition plasticity
     uint8_t subjective;         // Subjective self-awareness state flag
-} FruitFlyConnectome;
+} NeuralConnectome;
 
 // Core circuit update functions
-void init_connectome(FruitFlyConnectome *c);
-void feed_stimulus(FruitFlyConnectome *c, const char *input_text);
-void update_neural_state(FruitFlyConnectome *c);
-void tick_idle_decay(FruitFlyConnectome *c);
+void init_connectome(NeuralConnectome *c);
+void feed_stimulus(NeuralConnectome *c, const char *input_text);
+void update_neural_state(NeuralConnectome *c);
+void update_kaoru_mental_state(NeuralConnectome *c, KaoruMentalState *state);
+void tick_idle_decay(NeuralConnectome *c);
 
 #endif
