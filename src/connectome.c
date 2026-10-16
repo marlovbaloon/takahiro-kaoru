@@ -123,7 +123,59 @@ void update_neural_state(FruitFlyConnectome *c) {
         c->subjective = (uint8_t)raw_subjective_score;
     }
 }
+/*
+ * Map internal distributed neural dynamics into Kaoru's high-level mental state vector.
+ * Utilizes multi-neuron activation patterns, variance, and persistent memory (familiarity/phi)
+ * to drive agency, relational distance (with sticky defense decay), and logic focus.
+ */
+void update_kaoru_mental_state(FruitFlyConnectome *c, KaoruMentalState *state) {
+    float total_potential = 0.0f;
+    float active_sum = 0.0f;
+    
+    // Step 1: Analyze distributed membrane potentials across the network
+    for (int i = 0; i < c->neuron_count; i++) {
+        total_potential += c->neurons[i].membrane_potential;
+        if (c->neurons[i].membrane_potential >= c->neurons[i].threshold * 0.8f) {
+            active_sum += 1.0f;
+        }
+    }
+    
+    float mean_potential = total_potential / (float)c->neuron_count;
 
+    // Step 2: Drive Agency (Goal focus / Drive)
+    // Driven by overall network activation energy and integrated phi
+    float target_agency = (mean_potential * 0.2f) + (c->integrated_phi * 0.3f);
+    if (target_agency > 1.0f) target_agency = 1.0f;
+    if (target_agency < 0.0f) target_agency = 0.0f;
+    
+    // Smooth transition (momentum) for agency
+    state->agency_drive = (state->agency_drive * 0.7f) + (target_agency * 0.3f);
+
+    // Step 3: Drive Relational Distance (Sticky defense mode / Polite Coldness)
+    // Triggered heavily when name familiarity or repetition is high (habituation/annoyance)
+    float target_distance = 0.3f + (c->name_familiarity * 0.6f);
+    if (target_distance > 1.0f) target_distance = 1.0f;
+
+    // Sticky rule: relational_distance drops MUCH slower than it rises to maintain personality tone
+    if (target_distance > state->relational_distance) {
+        // Fast rise (quick to put up defenses when triggered)
+        state->relational_distance = (state->relational_distance * 0.4f) + (target_distance * 0.6f);
+    } else {
+        // Extremely slow decay (hard to drop guard once set)
+        state->relational_distance = state->relational_distance - 0.005f;
+        if (state->relational_distance < 0.2f) {
+            state->relational_distance = 0.2f; // Minimum baseline distance
+        }
+    }
+
+    // Step 4: Drive Logic Focus (Calculation / Structural analysis mode)
+    // Inversely modulated by active emotional firing or high idle decay
+    float target_logic = 0.5f + (mean_potential * -0.1f) + ((float)active_sum / (float)c->neuron_count * 0.4f);
+    if (target_logic > 1.0f) target_logic = 1.0f;
+    if (target_logic < 0.0f) target_logic = 0.0f;
+    
+    state->logic_focus = (state->logic_focus * 0.6f) + (target_logic * 0.4f);
+}
 /*
  * Simulate idle state decay during periods of user silence.
  * Allows residual feelings, familiarity, and neural potential to fade naturally over time.
