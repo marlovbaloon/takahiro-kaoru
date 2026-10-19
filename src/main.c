@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Example: %s http://localhost:8080 4\n", argv[0]);
         return 1;
     }
-    int n_threads = (argc >= 3) ? atoi(argv[2]) : 4;
+    //int n_threads = (argc >= 3) ? atoi(argv[2]) : 4;
 
     /* 1. Load brain */
     NeuralConnectome brain;

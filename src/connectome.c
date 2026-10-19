@@ -141,7 +141,7 @@ void update_cetasika_matrix(NeuralConnectome *c) {
 
     // Clamp all Cetasika values between 0.0f and 1.0f
     float *ptr = (float*)&c->cetasika;
-    for (int i = 0; i < sizeof(CetasikaMatrix) / sizeof(float); i++) {
+    for (size_t i = 0; i < sizeof(CetasikaMatrix) / sizeof(float); i++){
         if (ptr[i] > 1.0f) ptr[i] = 1.0f;
         if (ptr[i] < 0.0f) ptr[i] = 0.0f;
     }
