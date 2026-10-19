@@ -13,7 +13,8 @@ static const char *SYSTEM_PROMPT =
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <model.gguf> [n_threads]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <server_url> [n_threads]\n", argv[0]);
+        fprintf(stderr, "Example: %s http://localhost:8080 4\n", argv[0]);
         return 1;
     }
     int n_threads = (argc >= 3) ? atoi(argv[2]) : 4;
@@ -32,7 +33,7 @@ int main(int argc, char **argv) {
 
     /* 2. Load LLM */
     KaoruLLMBridge llm;
-    if (kaoru_llm_init(&llm, argv[1], n_threads, 2048) != 0) return 1;
+    if (kaoru_llm_init(&llm, argv[1], 2048) != 0) return 1;
 
     /* 3. Loop */
     char input[1024], output[8192];

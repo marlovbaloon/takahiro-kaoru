@@ -4,39 +4,40 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "llama.h"
+#include <curl/curl.h>
 
-int kaoru_llm_init(KaoruLLMBridge *b, const char *model_path, int n_threads, int n_ctx) {
+/* ---------- libcurl write callback ---------- */
+static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *userdata) {
+    size_t total = size * nmemb;
+    char **buf = (char **)userdata;
+    size_t old_len = *buf ? strlen(*buf) : 0;
+    char *new_buf = realloc(*buf, old_len + total + 1);
+    if (!new_buf) return 0;
+    memcpy(new_buf + old_len, ptr, total);
+    new_buf[old_len + total] = '\0';
+    *buf = new_buf;
+    return total;
+}
+
+/* ---------- Init / Free ---------- */
+int kaoru_llm_init(KaoruLLMBridge *b, const char *server_url, int n_ctx) {
+    if (!b || !server_url) return -1;
     memset(b, 0, sizeof(*b));
-    llama_backend_init();
-
-    struct llama_model_params mp = llama_model_default_params();
-    mp.n_gpu_layers = 0;
-    b->model = llama_model_load_from_file(model_path, mp);
-    if (!b->model) return -1;
-
-    struct llama_context_params cp = llama_context_default_params();
-    cp.n_ctx     = (uint32_t)n_ctx;
-    cp.n_threads = n_threads;
-    cp.n_batch   = 512;
-    b->ctx = llama_init_from_model(b->model, cp);
-    if (!b->ctx) { llama_model_free(b->model); return -1; }
-
-    b->vocab     = (void *)llama_model_get_vocab(b->model);
-    b->n_threads = n_threads;
-    b->n_ctx     = n_ctx;
-    b->loaded    = 1;
+    b->server_url = strdup(server_url);
+    b->n_ctx      = n_ctx;
+    b->loaded     = 1;
+    curl_global_init(CURL_GLOBAL_DEFAULT);
     return 0;
 }
 
 void kaoru_llm_free(KaoruLLMBridge *b) {
     if (!b) return;
-    if (b->ctx)   llama_free(b->ctx);
-    if (b->model) llama_model_free(b->model);
-    llama_backend_free();
+    free(b->server_url);
+    curl_global_cleanup();
     memset(b, 0, sizeof(*b));
 }
 
+/* ---------- Mental state → sampling params ---------- */
 SamplingParams map_mental_state_to_params(const KaoruMentalState *m) {
     SamplingParams p;
     p.temperature       = 0.9f - (m->logic_focus * 0.6f);
@@ -51,62 +52,117 @@ SamplingParams map_mental_state_to_params(const KaoruMentalState *m) {
     return p;
 }
 
-static int build_chatml(const char *sys, const char *usr, char *out, size_t n) {
-    return snprintf(out, n,
-        "<|im_start|>system\n%s<|im_end|>\n"
-        "<|im_start|>user\n%s<|im_end|>\n"
-        "<|im_start|>assistant\n",
-        sys ? sys : "", usr ? usr : "");
+/* ---------- JSON escape (minimal) ---------- */
+static void json_escape(const char *src, char *dst, size_t dst_len) {
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 6 < dst_len; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == '"' || c == '\\') { dst[j++] = '\\'; dst[j++] = (char)c; }
+        else if (c == '\n') { dst[j++] = '\\'; dst[j++] = 'n'; }
+        else if (c == '\r') { dst[j++] = '\\'; dst[j++] = 'r'; }
+        else if (c == '\t') { dst[j++] = '\\'; dst[j++] = 't'; }
+        else if (c < 0x20) { /* skip control chars */ }
+        else { dst[j++] = (char)c; }
+    }
+    dst[j] = '\0';
 }
 
+/* ---------- Extract "content":"..." from JSON response ---------- */
+/* ใช้ string search ง่ายๆ — ไม่ parse JSON เต็ม (พอสำหรับ test) */
+static int extract_content(const char *json, char *out, size_t out_len) {
+    const char *key = "\"content\":\"";
+    const char *p = strstr(json, key);
+    if (!p) return -1;
+    p += strlen(key);
+
+    size_t j = 0;
+    while (*p && j + 1 < out_len) {
+        if (*p == '\\' && *(p + 1)) {
+            char esc = *(p + 1);
+            if (esc == 'n') out[j++] = '\n';
+            else if (esc == 't') out[j++] = '\t';
+            else if (esc == 'r') out[j++] = '\r';
+            else if (esc == '"') out[j++] = '"';
+            else if (esc == '\\') out[j++] = '\\';
+            else out[j++] = esc;
+            p += 2;
+        } else if (*p == '"') {
+            break;
+        } else {
+            out[j++] = *p++;
+        }
+    }
+    out[j] = '\0';
+    return (int)j;
+}
+
+/* ---------- Main generate ---------- */
 int kaoru_generate_raw(KaoruLLMBridge *b, const char *system_prompt,
                        const char *user_prompt, SamplingParams p,
                        char *out, size_t out_len) {
     if (!b || !b->loaded || !out || out_len == 0) return -1;
+
+    /* Random seed ถ้าไม่ระบุ */
     if (p.seed < 0) p.seed = (int)(time(NULL) & 0x7FFFFFFF);
 
-    const struct llama_vocab *vocab = (const struct llama_vocab *)b->vocab;
+    /* Escape prompts */
+    char sys_esc[2048], usr_esc[2048];
+    json_escape(system_prompt ? system_prompt : "You are Kaoru.",
+                sys_esc, sizeof(sys_esc));
+    json_escape(user_prompt ? user_prompt : "", usr_esc, sizeof(usr_esc));
 
-    char prompt[4096];
-    int plen = build_chatml(system_prompt, user_prompt, prompt, sizeof(prompt));
-    if (plen <= 0 || plen >= (int)sizeof(prompt)) return -1;
+    /* Build JSON body */
+    char json[8192];
+    int n = snprintf(json, sizeof(json),
+        "{"
+        "\"messages\":["
+          "{\"role\":\"system\",\"content\":\"%s\"},"
+          "{\"role\":\"user\",\"content\":\"%s\"}"
+        "],"
+        "\"temperature\":%.3f,"
+        "\"top_p\":%.3f,"
+        "\"presence_penalty\":%.3f,"
+        "\"frequency_penalty\":%.3f,"
+        "\"max_tokens\":%d,"
+        "\"seed\":%d,"
+        "\"stream\":false"
+        "}",
+        sys_esc, usr_esc,
+        p.temperature, p.top_p, p.presence_penalty, p.frequency_penalty,
+        p.max_tokens, p.seed);
+    if (n <= 0 || n >= (int)sizeof(json)) return -1;
 
-    int32_t prompt_tokens[2048];
-    int n_prompt = llama_tokenize(vocab, prompt, plen, prompt_tokens, 2048, true, true);
-    if (n_prompt <= 0) return -1;
+    /* HTTP POST */
+    CURL *curl = curl_easy_init();
+    if (!curl) return -1;
 
-    struct llama_sampler_chain_params sp = llama_sampler_chain_default_params();
-    struct llama_sampler *chain = llama_sampler_chain_init(sp);
-    llama_sampler_chain_add(chain, llama_sampler_init_penalties(
-        64, p.presence_penalty, p.frequency_penalty, 0.0f));
-    llama_sampler_chain_add(chain, llama_sampler_init_top_p(p.top_p, 1));
-    llama_sampler_chain_add(chain, llama_sampler_init_temp(p.temperature));
-    llama_sampler_chain_add(chain, llama_sampler_init_dist((uint32_t)p.seed));
+    char url[512];
+    snprintf(url, sizeof(url), "%s/v1/chat/completions", b->server_url);
 
-    llama_memory_clear(llama_get_memory(b->ctx), true);
-    struct llama_batch batch = llama_batch_get_one(prompt_tokens, n_prompt);
-    if (llama_decode(b->ctx, batch) != 0) { llama_sampler_free(chain); return -1; }
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
 
-    size_t written = 0;
-    int n_gen = 0;
-    char piece[256];
+    char *resp = NULL;
 
-    while (n_gen < p.max_tokens && written + 1 < out_len) {
-        int32_t tok = llama_sampler_sample(chain, b->ctx, -1);
-        llama_sampler_accept(chain, tok);
-        if (llama_vocab_is_eog(vocab, tok)) break;
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
 
-        int pl = llama_token_to_piece(vocab, tok, piece, sizeof(piece), 0, true);
-        if (pl > 0) {
-            if (written + pl >= out_len) pl = (int)(out_len - written - 1);
-            memcpy(out + written, piece, pl);
-            written += pl;
-        }
-        struct llama_batch nb = llama_batch_get_one(&tok, 1);
-        if (llama_decode(b->ctx, nb) != 0) break;
-        n_gen++;
+    CURLcode rc = curl_easy_perform(curl);
+
+    int result = -1;
+    if (rc == CURLE_OK && resp) {
+        result = extract_content(resp, out, out_len);
+    } else if (resp) {
+        fprintf(stderr, "[llm_bridge] HTTP error: %s\n", curl_easy_strerror(rc));
+        fprintf(stderr, "[llm_bridge] Response: %.500s\n", resp);
     }
-    out[written] = '\0';
-    llama_sampler_free(chain);
-    return (int)written;
+
+    free(resp);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return result;
 }

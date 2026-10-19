@@ -6,10 +6,7 @@
 #include "connectome.h"
 
 typedef struct {
-    void *model;
-    void *ctx;
-    void *vocab;
-    int   n_threads;
+    char *server_url;   /* เช่น "http://localhost:8080" */
     int   n_ctx;
     int   loaded;
 } KaoruLLMBridge;
@@ -23,14 +20,11 @@ typedef struct {
     int   seed;
 } SamplingParams;
 
-/* Phase A: pure LLM control — no gating, no biasing */
-int  kaoru_llm_init(KaoruLLMBridge *b, const char *model_path, int n_threads, int n_ctx);
+int  kaoru_llm_init(KaoruLLMBridge *b, const char *server_url, int n_ctx);
 void kaoru_llm_free(KaoruLLMBridge *b);
 
-/* Map mental state → params (the CORE thing being validated) */
 SamplingParams map_mental_state_to_params(const KaoruMentalState *m);
 
-/* Raw generation — deliberately dumb */
 int kaoru_generate_raw(KaoruLLMBridge *b,
                        const char *system_prompt,
                        const char *user_prompt,
