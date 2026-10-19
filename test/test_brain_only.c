@@ -121,13 +121,18 @@ int main(void) {
     
     /* ─────────────────────────────────────────────── */
     print_separator("TEST 7: Idle decay (20 ticks, no input)");
+    printf("  Before decay:\n");
+    printf("    phi = %.4f, familiarity = %.4f\n",
+           brain.integrated_phi, brain.name_familiarity);
+    
     for (int i = 0; i < 20; i++) {
         tick_idle_decay(&brain);
-        update_neural_state(&brain);
     }
-    print_brain(&brain, "After idle decay");
+    
+    print_brain(&brain, "After idle decay (20 ticks)");
     print_mental(&mental);
     print_neuron_summary(&brain, "After idle decay");
+    printf("\n  ▶ phi should now DECREASE (not inflate)\n");
     
     /* ─────────────────────────────────────────────── */
     print_separator("DIFF SUMMARY");

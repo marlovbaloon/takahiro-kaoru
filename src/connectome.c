@@ -59,7 +59,8 @@ void init_connectome(NeuralConnectome *c) {
  *
  * Anti-runaway safeguard: self-stimulus weight MUST be < 1.0 (see feedback.c)
  */
-void feed_stimulus_sourced(NeuralConnectome *c, const char *input_text, float weight, StimulusSource source) {
+void feed_stimulus_sourced(NeuralConnectome *c, const char *input_text,
+                           float weight, StimulusSource source) {
     if (!input_text || !*input_text) return;
     int len = (int)strlen(input_text);
     if (len == 0) return;
@@ -82,15 +83,19 @@ void feed_stimulus_sourced(NeuralConnectome *c, const char *input_text, float we
 
     /* Source-specific Cetasika modulation */
     if (source == STIM_SOURCE_SELF) {
-        /* Listening to your own speech triggers reflective factors */
         c->cetasika.initial_thought        += 0.05f;
         c->cetasika.sustained_evaluation   += 0.08f;
         c->cetasika.mindfulness_retention  += 0.04f;
         c->cetasika.self_respect_dignity   += 0.02f;
-        /* Mild self-awareness: attention turns inward */
         c->cetasika.attention              += 0.03f;
     } else if (source == STIM_SOURCE_ENV) {
         c->cetasika.perception             += 0.03f;
+    } else if (source == STIM_SOURCE_USER) {
+        /* NEW: user input drives volition + intent_to_act (fixes Bug 5) */
+        c->cetasika.volition        += 0.05f * weight;
+        c->cetasika.intent_to_act   += 0.08f * weight;
+        c->cetasika.enthusiasm      += 0.03f * weight;
+        c->cetasika.attention       += 0.02f * weight;
     }
 
     /* Inject into Layer 0 (sensory gate) */
@@ -101,10 +106,12 @@ void feed_stimulus_sourced(NeuralConnectome *c, const char *input_text, float we
         }
     }
 
-    /* Kickstart Samsara cycle */
-    c->samsara.current_node_stage = 4; /* Phassa */
-    c->samsara.loop_momentum     += stimulus_energy;
-    c->samsara.is_latching        = 1;
+    /* Bug 1 fix: don't reset stage every stimulus — advance from current */
+    if (!c->samsara.is_latching || c->samsara.current_node_stage < 4) {
+        c->samsara.current_node_stage = 4;  /* Phassa */
+    }
+    c->samsara.loop_momentum += stimulus_energy;
+    c->samsara.is_latching    = 1;
 }
 
 /* Backwards-compatible wrapper */
@@ -126,22 +133,24 @@ void update_cetasika_matrix(NeuralConnectome *c) {
     }
     float avg_pot = total_potential / (float)c->neuron_count;
 
-    // Recursive feedback: Cetasika adjusts based on neural activity, 
-    // and in turn, damping factors regulate neural excitability (Homeostatic loop).
     if (avg_pot > 2.0f) {
-        // High arousal -> trigger defense / aversion & logic focus
+        /* High arousal → defense / logic focus */
         c->cetasika.aversion_hostility += 0.05f;
-        c->cetasika.wisdom_logic += 0.03f;
-        c->cetasika.equanimity_neutrality -= 0.05f;
+        c->cetasika.wisdom_logic       += 0.03f;
+        /* Bug 3 fix: slower equanimity decay + floor 0.3 */
+        c->cetasika.equanimity_neutrality -= 0.02f;
+        if (c->cetasika.equanimity_neutrality < 0.30f) {
+            c->cetasika.equanimity_neutrality = 0.30f;
+        }
     } else {
-        // Low activity -> pull back toward pristine equanimity (Prabhasara baseline)
+        /* Low activity → pull back to Prabhasara */
         c->cetasika.equanimity_neutrality += 0.02f;
-        c->cetasika.aversion_hostility -= 0.03f;
+        c->cetasika.aversion_hostility    -= 0.03f;
     }
 
-    // Clamp all Cetasika values between 0.0f and 1.0f
-    float *ptr = (float*)&c->cetasika;
-    for (size_t i = 0; i < sizeof(CetasikaMatrix) / sizeof(float); i++){
+    /* Clamp all Cetasika values to [0,1] */
+    float *ptr = (float *)&c->cetasika;
+    for (size_t i = 0; i < sizeof(CetasikaMatrix) / sizeof(float); i++) {
         if (ptr[i] > 1.0f) ptr[i] = 1.0f;
         if (ptr[i] < 0.0f) ptr[i] = 0.0f;
     }
@@ -218,9 +227,9 @@ void update_neural_state(NeuralConnectome *c) {
     update_samsara_loop(c);
 
     /* Step 5: Phi */
-    c->integrated_phi += (active_firing_count * 0.015f) - 0.02f;
-    if (c->integrated_phi < 0.01f) c->integrated_phi = 0.01f;
-    if (c->integrated_phi > 1.50f) c->integrated_phi = 1.50f;   /* ceiling moved here */
+    c->integrated_phi += (active_firing_count * 0.015f) - 0.005f;  /* was 0.02f */
+    if (c->integrated_phi < 0.05f) c->integrated_phi = 0.05f;      /* was 0.01f */
+    if (c->integrated_phi > 1.50f) c->integrated_phi = 1.50f;
 
     /* Step 6: subjective */
     float raw_subj = (c->name_familiarity * 120.0f)
@@ -257,15 +266,25 @@ void update_kaoru_mental_state(NeuralConnectome *c, KaoruMentalState *state) {
  */
 void tick_idle_decay(NeuralConnectome *c) {
     if (c->name_familiarity > 0.0f) c->name_familiarity -= 0.01f;
-    if (c->integrated_phi > 0.05f) c->integrated_phi -= 0.005f;
+    if (c->name_familiarity < 0.0f) c->name_familiarity = 0.0f;
 
-    // Naturally decay active mental factors back toward pristine baseline
-    c->cetasika.aversion_hostility -= 0.02f;
-    c->cetasika.conceit_pride -= 0.02f;
-    c->cetasika.equanimity_neutrality += 0.02f; // Restore calm baseline
+    /* Bug 4 fix: exponential decay instead of linear, don't inflate via neural */
+    c->integrated_phi *= 0.95f;
+    if (c->integrated_phi < 0.05f) c->integrated_phi = 0.05f;
 
+    /* Decay active mental factors toward pristine baseline */
+    c->cetasika.aversion_hostility      -= 0.02f;
+    c->cetasika.conceit_pride           -= 0.02f;
+    c->cetasika.equanimity_neutrality   += 0.02f;
+    c->cetasika.restlessness            -= 0.01f;
+    c->cetasika.skepticism_doubt        -= 0.01f;
+    c->cetasika.greed_attachment        -= 0.02f;
+
+    /* Floor for equanimity */
     if (c->cetasika.equanimity_neutrality > 1.0f) c->cetasika.equanimity_neutrality = 1.0f;
+    if (c->cetasika.equanimity_neutrality < 0.30f) c->cetasika.equanimity_neutrality = 0.30f;
 
+    /* Neuron decay */
     for (int i = 0; i < c->neuron_count; i++) {
         c->neurons[i].membrane_potential -= c->neurons[i].decay_rate;
         if (c->neurons[i].membrane_potential < 0.0f) {
@@ -273,6 +292,15 @@ void tick_idle_decay(NeuralConnectome *c) {
         }
         if (c->neurons[i].refractory_ticks > 0) {
             c->neurons[i].refractory_ticks--;
+        }
+    }
+
+    /* Samsara: release latch when momentum low */
+    if (c->samsara.is_latching) {
+        c->samsara.loop_momentum *= 0.9f;
+        if (c->samsara.loop_momentum < 0.5f) {
+            c->samsara.is_latching = 0;
+            c->samsara.current_node_stage = 0;
         }
     }
 }
