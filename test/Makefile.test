@@ -1,0 +1,22 @@
+# Makefile.test — build & run brain test only
+CC      = clang
+CFLAGS  = -O2 -g -Wall -Wextra -Iinclude
+LDLIBS  = -lm
+
+TEST_SRC = test/test_brain_only.c \
+           src/connectome.c \
+           src/wisdom.c \
+           src/memory.c
+
+TEST_BIN = test/test_brain_only
+
+.PHONY: test clean
+
+test: $(TEST_BIN)
+	./$(TEST_BIN)
+
+$(TEST_BIN): $(TEST_SRC)
+	$(CC) $(CFLAGS) $(TEST_SRC) -o $@ $(LDLIBS)
+
+clean:
+	rm -f $(TEST_BIN)
