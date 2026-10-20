@@ -168,12 +168,7 @@ void update_samsara_loop(NeuralConnectome *c) {
     if (c->samsara.current_node_stage >= 12) {
         // Stage 12 reached (Jara-marana / Decay & Reset)
         // Automatically reset back to Prabhasara (Pristine state)
-        c->samsara.current_node_stage = 0;
-        c->samsara.loop_momentum *= 0.2f; // Decay momentum
-        
-        if (c->samsara.loop_momentum < 0.1f) {
-            c->samsara.is_latching = 0; // Release latch, return to neutral pristine baseline
-        }
+        c->samsara.current_node_stage = 0;        
     }
 }
 
@@ -294,14 +289,17 @@ void tick_idle_decay(NeuralConnectome *c) {
             c->neurons[i].refractory_ticks--;
         }
     }
-
-    /* Samsara: release latch when momentum low */
     if (c->samsara.is_latching) {
-        c->samsara.loop_momentum *= 0.9f;
-        if (c->samsara.loop_momentum < 0.5f) {
-            c->samsara.is_latching = 0;
-            c->samsara.current_node_stage = 0;
+    c->samsara.loop_momentum *= 0.95f;
+    if (c->samsara.loop_momentum < 0.1f) {
+        c->samsara.is_latching = 0;
+        c->samsara.current_node_stage = 0;
         }
+    }
+    float *ptr = (float *)&c->cetasika;
+    for (size_t i = 0; i < sizeof(CetasikaMatrix) / sizeof(float); i++) {
+        if (ptr[i] > 1.0f) ptr[i] = 1.0f;
+        if (ptr[i] < 0.0f) ptr[i] = 0.0f;
     }
 }
 /*
